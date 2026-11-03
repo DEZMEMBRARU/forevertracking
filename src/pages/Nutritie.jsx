@@ -3,18 +3,10 @@ import { supabase } from '../lib/supabase'
 import Modal from '../components/Modal'
 import { swr, getFoods, invalidateFoods } from '../lib/cache'
 import BarcodeScanner from '../components/BarcodeScanner'
-import { touchXpDay } from '../lib/xp'
 
-function fmtDate(d) {
+function getToday() {
+  const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-}
-function getToday() { return fmtDate(new Date()) }
-function parseDate(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
-function shiftDate(s, delta) { const d = parseDate(s); d.setDate(d.getDate() + delta); return fmtDate(d) }
-function dayLabel(s, todayStr) {
-  if (s === todayStr) return 'azi'
-  if (s === shiftDate(todayStr, -1)) return 'ieri'
-  return parseDate(s).toLocaleDateString('ro-RO', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 const MEAL_TYPES = [
@@ -47,12 +39,7 @@ function genUUID() {
 // ─── AZI ─────────────────────────────────────────────
 
 function AziTab({ session }) {
-  const realToday = getToday()
-  const [date, setDate] = useState(realToday)       // ziua afișată/editată (azi implicit; poate fi o zi din trecut)
-  const dateRef = useRef(date)
-  const [dayLoading, setDayLoading] = useState(true)
-  const isToday = date === realToday
-  const dayName = dayLabel(date, realToday)
+  const today = getToday()
   const [meals, setMeals] = useState([])
   const [allFoods, setAllFoods] = useState([])
   const [pantryItems, setPantryItems] = useState([])
@@ -71,64 +58,50 @@ function AziTab({ session }) {
   const [editingItem, setEditingItem] = useState(null)
   const [editQty, setEditQty] = useState('')
   const [collapsed, setCollapsed] = useState({})
-  const [allSups, setAllSups] = useState([])
-  const [supLogIds, setSupLogIds] = useState([])   // suplimentele luate în ziua selectată
+  const [takenSupplements, setTakenSupplements] = useState([])
   const [showNewFoodForm, setShowNewFoodForm] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
   const [newFoodForm, setNewFoodForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '' })
 
   useEffect(() => { loadAll() }, [])
 
-  // La schimbarea zilei: golește ecranul (să nu rămână mesele altei zile) și încarcă ziua nouă
-  useEffect(() => {
-    dateRef.current = date
-    setMeals([]); setSupLogIds([]); setDayLoading(true)
-    loadDay(date)
-  }, [date])
-
   async function loadAll() {
     const uid = session.user.id
     // Lista de alimente: un singur fetch partajat între pagini (cache 10 min)
     getFoods(supabase).then(setAllFoods)
-    await swr(`${uid}:nutri:init`, async () => {
-      const [pantry, templates, sups] = await Promise.all([
+    loadMeals()
+    await swr(`${uid}:nutri:init:${today}`, async () => {
+      const [pantry, templates, sups, logs] = await Promise.all([
         supabase.from('pantry_items').select('*').eq('user_id', uid).eq('list_type', 'stock'),
         supabase.from('meal_templates')
           .select(`id, name, user_id, is_public, meal_template_items(quantity_g, foods(id, name, calories, protein, carbs, fat))`)
           .order('name'),
         supabase.from('daily_supplements').select('*').eq('user_id', uid),
+        supabase.from('supplement_logs').select('*').eq('user_id', uid).eq('date', today).eq('taken', true),
       ])
       return {
-        pantry: pantry.data, templates: templates.data, sups: sups.data,
-        error: pantry.error || templates.error || sups.error || undefined,
+        pantry: pantry.data, templates: templates.data, sups: sups.data, logs: logs.data,
+        error: pantry.error || templates.error || sups.error || logs.error || undefined,
       }
-    }, ({ pantry, templates, sups }) => {
+    }, ({ pantry, templates, sups, logs }) => {
       setPantryItems(pantry || [])
       setMealTemplates((templates || []).filter(t => t.user_id === uid || t.is_public === true))
-      setAllSups(sups || [])
+      if (sups?.length) {
+        const takenIds = new Set((logs || []).map(l => l.supplement_id))
+        setTakenSupplements(sups.filter(s => takenIds.has(s.id) && (s.calories > 0 || s.protein_g > 0 || s.carbs_g > 0 || s.fat_g > 0)))
+      } else {
+        setTakenSupplements([])
+      }
     })
   }
 
-  // Mesele și suplimentele luate pentru ziua `d`. Răspunsurile pentru o zi părăsită între timp se ignoră.
-  async function loadDay(d = date) {
+  async function loadMeals() {
     const uid = session.user.id
-    const current = () => dateRef.current === d
-    await Promise.all([
-      swr(`${uid}:meals:${d}`, () => supabase.from('meal_logs').select(`
-        id, meal_type,
-        meal_items(id, quantity_g, group_id, group_name, foods(id, name, calories, protein, carbs, fat))
-      `).eq('user_id', uid).eq('date', d),
-        ({ data }) => { if (current()) { setMeals(data || []); setDayLoading(false) } }),
-      swr(`${uid}:suplogs:${d}`, () => supabase.from('supplement_logs').select('supplement_id')
-        .eq('user_id', uid).eq('date', d).eq('taken', true),
-        ({ data }) => { if (current()) setSupLogIds((data || []).map(l => l.supplement_id)) }),
-    ])
-  }
-
-  // După orice modificare: reîncarcă ziua și, dacă e o zi din trecut, o include în sincronizarea XP
-  function refreshAfterEdit() {
-    loadDay(date)
-    if (!isToday) touchXpDay(date)
+    await swr(`${uid}:meals:${today}`, () => supabase.from('meal_logs').select(`
+      id, meal_type,
+      meal_items(id, quantity_g, group_id, group_name, foods(id, name, calories, protein, carbs, fat))
+    `).eq('user_id', uid).eq('date', today),
+      ({ data }) => setMeals(data || []))
   }
 
   // Convert any unit to grams equivalent for storage
@@ -150,19 +123,19 @@ function AziTab({ session }) {
     if (!selectedFood || !quantity) return
     let mealLog = meals.find(m => m.meal_type === activeMealType)
     if (!mealLog) {
-      const { data } = await supabase.from('meal_logs').insert({ user_id: session.user.id, date, meal_type: activeMealType }).select().single()
+      const { data } = await supabase.from('meal_logs').insert({ user_id: session.user.id, date: today, meal_type: activeMealType }).select().single()
       mealLog = data
     }
     const qg = toGrams(quantity, unit, selectedFood) * (mealPct / 100)
     await supabase.from('meal_items').insert({ meal_log_id: mealLog.id, food_id: selectedFood.id, quantity_g: Math.round(qg * 10) / 10, group_id: null, group_name: null })
-    closeAddModal(); refreshAfterEdit()
+    closeAddModal(); loadMeals()
   }
 
   async function addTemplate() {
     if (!selectedTemplate) return
     let mealLog = meals.find(m => m.meal_type === activeMealType)
     if (!mealLog) {
-      const { data } = await supabase.from('meal_logs').insert({ user_id: session.user.id, date, meal_type: activeMealType }).select().single()
+      const { data } = await supabase.from('meal_logs').insert({ user_id: session.user.id, date: today, meal_type: activeMealType }).select().single()
       mealLog = data
     }
     const gid = genUUID()
@@ -176,15 +149,15 @@ function AziTab({ session }) {
         group_name: mealPct < 100 ? `${selectedTemplate.name} (${mealPct}%)` : selectedTemplate.name
       }))
     )
-    closeAddModal(); refreshAfterEdit()
+    closeAddModal(); loadMeals()
   }
 
-  async function removeItem(itemId) { await supabase.from('meal_items').delete().eq('id', itemId); refreshAfterEdit() }
-  async function removeGroup(groupId) { await supabase.from('meal_items').delete().eq('group_id', groupId); refreshAfterEdit() }
+  async function removeItem(itemId) { await supabase.from('meal_items').delete().eq('id', itemId); loadMeals() }
+  async function removeGroup(groupId) { await supabase.from('meal_items').delete().eq('group_id', groupId); loadMeals() }
   async function saveEditItem() {
     if (!editingItem || !editQty) return
     await supabase.from('meal_items').update({ quantity_g: parseFloat(editQty) }).eq('id', editingItem.id)
-    setEditingItem(null); refreshAfterEdit()
+    setEditingItem(null); loadMeals()
   }
 
   function closeAddModal() {
@@ -242,9 +215,6 @@ function AziTab({ session }) {
     return { calories: acc.calories + n.calories, protein: acc.protein + n.protein, carbs: acc.carbs + n.carbs, fat: acc.fat + n.fat }
   }, { calories: 0, protein: 0, carbs: 0, fat: 0 })
 
-  const takenIds = new Set(supLogIds)
-  const takenSupplements = allSups.filter(s => takenIds.has(s.id) && (s.calories > 0 || s.protein_g > 0 || s.carbs_g > 0 || s.fat_g > 0))
-
   const supNutrition = takenSupplements.reduce((acc, s) => ({
     calories: acc.calories + (s.calories || 0),
     protein:  acc.protein  + (s.protein_g || 0),
@@ -267,28 +237,8 @@ function AziTab({ session }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <button onClick={() => setDate(shiftDate(date, -1))} aria-label="Ziua anterioară"
-          className="w-11 h-11 rounded-xl bg-dark-700 hover:bg-dark-600 text-white text-xl flex items-center justify-center shrink-0">‹</button>
-        <label className="relative flex-1 h-11 rounded-xl bg-dark-700 hover:bg-dark-600 flex items-center justify-center cursor-pointer min-w-0">
-          <span className="text-sm font-semibold text-white truncate px-2">📅 {dayName.charAt(0).toUpperCase() + dayName.slice(1)}</span>
-          <input type="date" value={date} max={realToday} aria-label="Alege ziua"
-            onChange={e => { const v = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setDate(v > realToday ? realToday : v) }}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-        </label>
-        <button onClick={() => setDate(shiftDate(date, 1))} disabled={isToday} aria-label="Ziua următoare"
-          className="w-11 h-11 rounded-xl bg-dark-700 hover:bg-dark-600 text-white text-xl flex items-center justify-center shrink-0 disabled:opacity-30">›</button>
-      </div>
-
-      {!isToday && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center justify-between gap-3">
-          <span>Editezi <b>{dayName}</b>. Ce adaugi se salvează pe această zi.</span>
-          <button onClick={() => setDate(realToday)} className="font-semibold text-amber-100 underline shrink-0">Înapoi la azi</button>
-        </div>
-      )}
-
       <div className="card bg-gradient-to-br from-brand-green/10 to-transparent border-brand-green/20">
-        <p className="text-xs text-slate-400 mb-2">Total {dayName}</p>
+        <p className="text-xs text-slate-400 mb-2">Total azi</p>
         <div className="grid grid-cols-4 gap-2 text-center">
           {[
             { label: 'kcal', value: totalNutrition.calories, color: 'text-brand-green' },
@@ -326,7 +276,7 @@ function AziTab({ session }) {
 
             <div className="mt-2 space-y-2">
                 {items.length === 0 ? (
-                  <p className="text-slate-600 text-xs">{dayLoading ? 'Se încarcă...' : 'Niciun aliment adăugat'}</p>
+                  <p className="text-slate-600 text-xs">Niciun aliment adăugat</p>
                 ) : (
                   <>
                     {Object.entries(groups).map(([gid, group]) => {
@@ -384,7 +334,7 @@ function AziTab({ session }) {
             <span className="text-lg">💊</span>
             <div className="flex-1">
               <p className="text-sm font-semibold text-white">Suplimente</p>
-              <p className="text-xs text-slate-500">Luate {dayName} · contribuie la total</p>
+              <p className="text-xs text-slate-500">Luate azi · contribuie la total</p>
             </div>
             <span className="text-xs text-slate-500">
               {Math.round(supNutrition.calories)} kcal
@@ -1186,7 +1136,7 @@ function TargeturiTab({ session }) {
 export default function Nutritie({ session, isAdmin }) {
   const [tab, setTab] = useState('azi')
   const tabs = [
-    { key: 'azi',      label: '📅 Jurnal' },
+    { key: 'azi',      label: '📅 Azi' },
     { key: 'alimente', label: '🥦 Alimente' },
     { key: 'mese',     label: '🍽️ Mese' },
   ]

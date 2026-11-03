@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { clearCache } from './lib/cache'
-import { syncXp, xpStatus } from './lib/xp'
-import XpToast from './components/XpToast'
 import Footer from './components/Footer'
 import Auth from './pages/Auth'
 
@@ -79,17 +77,6 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // XP automat: la deschidere (ultimele 3 zile, ca să se încheie și ziua de ieri) și la revenirea în aplicație
-  useEffect(() => {
-    if (!session?.user?.id || !onboardingDone) return
-    syncXp({ daysBack: 3 })
-    const onVisible = () => {
-      if (document.visibilityState === 'visible' && Date.now() - xpStatus.lastSync > 10 * 60 * 1000) syncXp({ daysBack: 1 })
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [session?.user?.id, onboardingDone])
-
   // După ce aplicația e gata, descarcă în fundal paginile mari => navigarea devine instantanee
   useEffect(() => {
     if (!session || !onboardingDone) return
@@ -156,7 +143,6 @@ export default function App() {
         </Suspense>
         {/* Un singur Footer, montat o dată — nu se mai recreează la fiecare navigare */}
         <Footer isAdmin={isAdmin} />
-        <XpToast />
       </div>
     </BrowserRouter>
   )
