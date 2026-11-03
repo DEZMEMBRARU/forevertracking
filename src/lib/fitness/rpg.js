@@ -43,3 +43,13 @@ export function getMetricFromActivity(activity, metricKey) {
   if (metricKey === 'activity_count') return 1
   return 0
 }
+
+// Regulile de XP afișate în aplicație. Ține-le în sincron cu supabase/migrations/202611030001_xp_everything.sql.
+export const XP_RULES = [
+  { group: 'Apă', rules: [['50% din țintă', '+8'], ['Țintă atinsă', '+12']] },
+  { group: 'Nutriție', rules: [['Masă înregistrată', '+5'], ['3 mese în zi', '+10'], ['Proteine la țintă', '+15'], ['Calorii între 85% și 110% din țintă (la sfârșit de zi)', '+20']] },
+  { group: 'Suplimente', rules: [['Fiecare supliment luat', '+3'], ['Toate suplimentele luate', '+10']] },
+  { group: 'Antrenament', rules: [['Alergare', '5 / km (5–60)'], ['Bicicletă', '2 / km (8–50)'], ['Forță', '+20, plus 2 / set (max +20)'], ['Alt antrenament', '+10'], ['Antrenament din plan bifat', '+10']] },
+  { group: 'Bonus', rules: [['Zi completă: apă, mese, suplimente și mișcare', '+25']] },
+]
+export const TRAINING_DAILY_CAP = 150

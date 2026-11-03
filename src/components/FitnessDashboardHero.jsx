@@ -11,6 +11,14 @@ export default function FitnessDashboardHero({ userId }) {
   const navigate = useNavigate()
   const [data, setData] = useState({ xp: 0, runKm: 0, workouts: 0, sessions: 0, quests: 0 })
   const [rpgReady, setRpgReady] = useState(false)
+  const [tick, setTick] = useState(0)
+
+  // când sincronizarea acordă XP (apă, mese, antrenamente...), cardul se reîncarcă singur
+  useEffect(() => {
+    const bump = () => setTick(t => t + 1)
+    window.addEventListener('xp-awarded', bump)
+    return () => window.removeEventListener('xp-awarded', bump)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -39,7 +47,7 @@ export default function FitnessDashboardHero({ userId }) {
     }
     if (userId) load()
     return () => { alive = false }
-  }, [userId])
+  }, [userId, tick])
 
   const level = levelFromXp(data.xp)
   return (

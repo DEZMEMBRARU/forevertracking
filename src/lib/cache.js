@@ -62,6 +62,13 @@ export function setCached(key, data) { store.set(key, { data, ts: Date.now() }) 
 export function invalidateCache(key) { store.delete(key); inflight.delete(key) }
 export function clearCache() { store.clear(); inflight.clear() }
 
+// Ascultători pentru „o scriere într-un tabel s-a terminat cu SUCCES" (ex. sincronizarea XP).
+const writeListeners = new Set()
+export function onWritten(fn) { writeListeners.add(fn); return () => writeListeners.delete(fn) }
+export function notifyWritten(table) {
+  writeListeners.forEach(fn => { try { fn(table) } catch (e) { console.error('[onWritten]', e) } })
+}
+
 // Apelată automat la orice scriere (insert/update/upsert/delete) într-un tabel.
 export function markDirty(table) {
   for (const key of [...store.keys(), ...inflight.keys()]) {
