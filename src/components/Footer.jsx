@@ -1,20 +1,8 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { NAV_ITEMS, getNavPrefs, isNavItemVisible } from '../lib/navTabs'
 
-const allTabs = [
-  { path: '/',         label: 'Acasă',   icon: '🏠',  pref: null },
-  { path: '/nutritie', label: 'Nutriție', icon: '🥗',  pref: null },
-  { path: '/sport',    label: 'Plan',     icon: '📋',  pref: null },
-  { path: '/camara',   label: 'Cămară',  icon: '🧺',  pref: 'showCamara' },
-  { path: '/buget',    label: 'Buget',   icon: '💰',  pref: 'showBuget' },
-  { path: '/profil',   label: 'Profil',  icon: '👤',  pref: null },
-]
-
-const adminTab = { path: '/utilizatori', label: 'Elevi', icon: '👥', pref: null }
-
-function getNavPrefs() {
-  try { return JSON.parse(localStorage.getItem('nav_prefs') || '{}') } catch { return {} }
-}
+const adminTab = { path: '/utilizatori', label: 'Elevi', icon: '👥' }
 
 export default function Footer({ isAdmin }) {
   const location = useLocation()
@@ -27,9 +15,13 @@ export default function Footer({ isAdmin }) {
     return () => window.removeEventListener('nav-prefs-changed', handler)
   }, [])
 
-  const visibleTabs = allTabs.filter(t => t.pref === null || prefs[t.pref] !== false)
+  // pagina de întoarcere de la Strava nu are meniu
+  if (location.pathname === '/strava-callback') return null
+
+  const visibleTabs = NAV_ITEMS.filter(t => isNavItemVisible(t, prefs))
   const tabs = isAdmin ? [...visibleTabs, adminTab] : visibleTabs
   const many = tabs.length >= 6
+  const tight = tabs.length >= 8
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 footer-safe">
@@ -46,7 +38,7 @@ export default function Footer({ isAdmin }) {
                 <span className={`transition-transform leading-none ${active ? 'scale-110' : 'scale-100'} ${many ? 'text-base' : 'text-xl'}`}>
                   {tab.icon}
                 </span>
-                <span className={`font-medium transition-colors truncate w-full text-center ${many ? 'text-[9px]' : 'text-xs'} ${active ? 'text-brand-green' : 'text-slate-500'}`}>
+                <span className={`font-medium transition-colors truncate w-full text-center ${tight ? 'text-[8px]' : many ? 'text-[9px]' : 'text-xs'} ${active ? 'text-brand-green' : 'text-slate-500'}`}>
                   {tab.label}
                 </span>
               </button>
