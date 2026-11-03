@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useSubmitGuard } from '../lib/useSubmitGuard'
+import { NAV_ITEMS } from '../lib/navTabs'
 import Modal from '../components/Modal'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
@@ -213,14 +214,14 @@ export default function Profil({ session, isAdmin }) {
   })
 
   function toggleNavPref(key) {
-    setNavPrefs(prev => {
-      // Default-ul e true (vizibil) — toggle înseamnă setare explicită
-      const current = prev[key] !== false // dacă nu e setat explicit false, e true
-      const next = { ...prev, [key]: !current }
-      localStorage.setItem('nav_prefs', JSON.stringify(next))
-      window.dispatchEvent(new Event('nav-prefs-changed'))
-      return next
-    })
+    // Default-ul e true (vizibil) — toggle înseamnă setare explicită
+    const current = navPrefs[key] !== false // dacă nu e setat explicit false, e true
+    const next = { ...navPrefs, [key]: !current }
+    setNavPrefs(next)
+    // Efectele (localStorage + eveniment pentru meniu) stau în afara funcției de update al state-ului:
+    // acolo rulează în timpul randării și actualiza meniul în mijlocul randării paginii.
+    localStorage.setItem('nav_prefs', JSON.stringify(next))
+    window.dispatchEvent(new Event('nav-prefs-changed'))
   }
 
   useEffect(() => { loadData(); applyTheme(activeTheme) }, [])
@@ -488,10 +489,7 @@ export default function Profil({ session, isAdmin }) {
         <div className="border-t border-dark-600 pt-3">
           <p className="text-sm font-medium text-white mb-3">🧭 Pagini vizibile în meniu</p>
           <div className="space-y-2">
-            {[
-              { key: 'showBuget',  label: 'Buget',  icon: '💰', desc: 'Urmărire venituri & cheltuieli' },
-              { key: 'showCamara', label: 'Cămară', icon: '🧺', desc: 'Stoc alimente acasă' },
-            ].map(item => {
+            {NAV_ITEMS.filter(item => !item.locked).map(item => {
               const isOn = navPrefs[item.key] !== false
               return (
                 <button key={item.key} onClick={() => toggleNavPref(item.key)}
@@ -499,7 +497,7 @@ export default function Profil({ session, isAdmin }) {
                   <div className="flex items-center gap-3">
                     <span className="text-xl">{item.icon}</span>
                     <div className="text-left">
-                      <p className="text-sm text-white font-medium">{item.label}</p>
+                      <p className="text-sm text-white font-medium">{item.settingsLabel || item.label}</p>
                       <p className="text-[11px] text-slate-500">{item.desc}</p>
                     </div>
                   </div>
@@ -510,6 +508,7 @@ export default function Profil({ session, isAdmin }) {
               )
             })}
           </div>
+          <p className="text-[11px] text-slate-500 mt-2">Acasă și Profil rămân mereu în meniu. Setarea se salvează pe acest dispozitiv.</p>
         </div>
 
         {/* Install */}

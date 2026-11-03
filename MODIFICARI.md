@@ -91,3 +91,29 @@ Nou: supabase/migrations/202611030001_xp_everything.sql, src/lib/xp.js, src/comp
 Modificat: src/lib/supabase.js, src/lib/cache.js, src/lib/fitness/rpg.js, src/App.jsx,
 src/pages/fitness/FitnessRpg.jsx, src/components/FitnessDashboardHero.jsx, src/components/StreakCard.jsx
 (StreakCard: folosea data UTC; între 00:00 și 02:00/03:00 „azi" era ieri și streak-ul se rupea)
+
+
+---
+
+# Jurnal pe zile, meniu configurabil, Fitness RPG în meniu
+
+## Jurnal alimentar pe zile (Nutriție → „Jurnal", fostul „Azi")
+- Săgețile ‹ › și un selector de dată (📅) schimbă ziua afișată. Nu poți merge în viitor.
+- Vezi mesele, totalurile și suplimentele luate din ziua aleasă; poți adăuga, edita și șterge alimente pe acea zi.
+- Pe o zi din trecut apare bannerul „Editezi ieri. Ce adaugi se salvează pe această zi." + „Înapoi la azi".
+- Dacă adaugi pe o zi din trecut, XP-ul acelei zile se recalculează automat (maxim 60 de zile în urmă).
+- Protecții: mesele unei zile nu apar în alta, iar un răspuns întârziat pentru o zi părăsită nu suprascrie ziua curentă.
+
+## Meniul de jos configurabil
+- Profil → „Pagini vizibile în meniu": Nutriție, Plan, Fitness RPG, Cămară și Buget se pot activa/dezactiva.
+- Acasă și Profil rămân mereu în meniu (altfel nu mai ajungi la Setări).
+- Fitness RPG e acum buton în meniu (⚡ RPG), vizibil implicit.
+- Setarea se salvează pe dispozitiv (localStorage), ca până acum la Buget și Cămară.
+- Lista de pagini e într-un singur loc (src/lib/navTabs.js), folosit de meniu și de Setări.
+
+## Reparat
+- Comutatoarele din Setări actualizau meniul în timpul randării paginii (avertisment React); acum nu.
+
+## Fișiere
+Nou: src/lib/navTabs.js
+Modificat: src/pages/Nutritie.jsx, src/pages/Profil.jsx, src/components/Footer.jsx, src/lib/xp.js

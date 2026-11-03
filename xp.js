@@ -75,9 +75,24 @@ async function doSync(daysBack) {
   }
 }
 
-function scheduleSync() {
+let pendingDaysBack = 0
+function scheduleSync(daysBack = 0) {
+  pendingDaysBack = Math.max(pendingDaysBack, daysBack)
   clearTimeout(timer)
-  timer = setTimeout(() => syncXp({ daysBack: 0 }), DEBOUNCE_MS)
+  timer = setTimeout(() => {
+    const days = pendingDaysBack
+    pendingDaysBack = 0
+    syncXp({ daysBack: days })
+  }, DEBOUNCE_MS)
 }
 
-onWritten(table => { if (XP_TABLES.has(table)) scheduleSync() })
+// Când editezi o zi din TRECUT (ex. adaugi o masă uitată), sincronizarea trebuie să acopere și ziua aceea.
+export function touchXpDay(dateISO) {
+  const [y, m, d] = String(dateISO).split('-').map(Number)
+  if (!y || !m || !d) return
+  const now = new Date()
+  const daysAgo = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(y, m - 1, d)) / 86400000)
+  if (daysAgo > 0 && daysAgo <= 60) scheduleSync(daysAgo)   // sync_xp reevaluează maxim 60 de zile în urmă
+}
+
+onWritten(table => { if (XP_TABLES.has(table)) scheduleSync(0) })
